@@ -193,6 +193,7 @@ model Space {
   usageRecords                UsageRecord[]
   notificationPreferences     NotificationPreference[]
   computers                   Computer[]
+  computerProfiles            ComputerProfile[]
   externalEffects             ExternalEffect[]
   mcpServers                  McpServer[]
   mcpOAuthSessions            McpOAuthSession[]
@@ -914,6 +915,11 @@ model Computer {
   homeKey                 String                   @unique
   homeRevision            String                   @default("empty")
   kind                    String
+  template                String?
+  cpuCount                Int?
+  memoryMB                 Int?
+  profileId               String?
+  profile                 ComputerProfile?         @relation(fields: [profileId], references: [id], onDelete: Restrict)
   providerRef             String?
   state                   String                   @default("stopped")
   controlHolder           String                   @default("none")
@@ -935,7 +941,26 @@ model Computer {
   updates                 ComputerUpdate[]
 
   @@index([spaceId, scope])
+  @@index([profileId])
   @@map("computers")
+}
+
+model ComputerProfile {
+  id        String     @id @default(cuid())
+  spaceId   String
+  space     Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name      String
+  kind      String
+  template  String?
+  cpuCount  Int?
+  memoryMB  Int?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  computers Computer[]
+
+  @@unique([spaceId, name])
+  @@index([spaceId, createdAt])
+  @@map("computer_profiles")
 }
 
 model ComputerExecutionLease {

@@ -8,7 +8,12 @@ import { ComputerBrowserProvider } from "./computer-browser.js";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { DockerSandboxProvider } from "./docker-sandbox.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
-import { createRunSandbox, HostAwareSandbox, sandboxKindForBot } from "./host-aware-sandbox.js";
+import {
+  configuredSandboxKinds,
+  createRunSandbox,
+  HostAwareSandbox,
+  sandboxKindForBot,
+} from "./host-aware-sandbox.js";
 
 const ctx = {
   operationId: "1",
@@ -119,6 +124,47 @@ describe("host-aware sandbox", () => {
     const computer = await sandbox.provision({ botId: "iso", homePath: "/tmp/iso" }, ctx);
     expect(computer.kind).toBe("fake");
     await sandbox.destroy(computer, ctx);
+  });
+
+  it("routes provisioning and later calls through a selected provider", async () => {
+    const primary = new FakeSandboxProvider();
+    const selected = new FakeSandboxProvider();
+    const provision = vi.spyOn(selected, "provision");
+    const destroy = vi.spyOn(selected, "destroy");
+    const sandbox = new HostAwareSandbox(
+      primary,
+      new DesktopSandboxProvider(),
+      async () => false,
+      new Map([["e2b", selected]]),
+    );
+
+    const computer = await sandbox.provision(
+      {
+        botId: "profile",
+        homePath: "/tmp/profile",
+        providerKind: "e2b",
+        template: "desktop",
+        cpuCount: 8,
+        memoryMB: 16_384,
+      },
+      ctx,
+    );
+    expect(provision).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "desktop", cpuCount: 8, memoryMB: 16_384 }),
+      ctx,
+    );
+    await sandbox.destroy({ ...computer, kind: "e2b" }, ctx);
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  it("lists only configured profile providers", () => {
+    expect(
+      configuredSandboxKinds("docker", {
+        supervisorToken: "docker-token",
+        e2bApiKey: "e2b-key",
+      }),
+    ).toEqual(["docker", "e2b"]);
+    expect(configuredSandboxKinds("fake", {})).toEqual([]);
   });
 
   it("maps the Linux bot home cwd onto the desktop home", async () => {

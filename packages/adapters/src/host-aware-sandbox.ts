@@ -24,26 +24,49 @@ export function createRunSandbox(
   kind: string,
   opts: SandboxProviderOptions & { prisma?: PrismaClient },
 ): SandboxProvider {
-  if (kind === "desktop") {
-    return new DesktopSandboxProvider({
-      root: opts.dataDir,
-      hostRoots: [homedir()],
-    });
-  }
   const primary = createSandboxProvider(kind, opts);
-  if (kind !== "docker" || !opts.prisma) return primary;
+  const host = new DesktopSandboxProvider({
+    root: opts.dataDir,
+    hostRoots: [homedir()],
+  });
+  const providers = new Map<string, SandboxProvider>();
+  if (opts.supervisorToken && kind !== "docker") {
+    providers.set("docker", createSandboxProvider("docker", opts));
+  }
+  if (opts.e2bApiKey?.trim() && kind !== "e2b") {
+    providers.set("e2b", createSandboxProvider("e2b", opts));
+  }
+  if (opts.daytonaApiKey?.trim() && kind !== "daytona") {
+    providers.set("daytona", createSandboxProvider("daytona", opts));
+  }
+  if (opts.boxApiKey?.trim() && kind !== "box") {
+    providers.set("box", createSandboxProvider("box", opts));
+  }
+  if (kind === "desktop") return host;
+  if (!opts.prisma && providers.size === 0) return primary;
   return new HostAwareSandbox(
     primary,
-    new DesktopSandboxProvider({
-      root: opts.dataDir,
-      hostRoots: [homedir()],
-    }),
+    host,
     async () => {
+      if (kind !== "docker" || !opts.prisma) return false;
       const settings = await opts.prisma!.deploymentSettings.findUnique({
         where: { id: "default" },
       });
       return settings?.computerHost === "this-mac";
     },
+    providers,
+  );
+}
+
+export function configuredSandboxKinds(kind: string, opts: SandboxProviderOptions) {
+  const kinds = new Set<string>([kind]);
+  if (opts.supervisorToken) kinds.add("docker");
+  if (opts.e2bApiKey?.trim()) kinds.add("e2b");
+  if (opts.daytonaApiKey?.trim()) kinds.add("daytona");
+  if (opts.boxApiKey?.trim()) kinds.add("box");
+  return [...kinds].filter(
+    (entry): entry is "docker" | "e2b" | "daytona" | "box" =>
+      entry === "docker" || entry === "e2b" || entry === "daytona" || entry === "box",
   );
 }
 
@@ -54,8 +77,13 @@ export class HostAwareSandbox implements SandboxProvider {
     private readonly isolated: SandboxProvider,
     private readonly host: SandboxProvider,
     private readonly hostEnabled: () => Promise<boolean>,
+    private readonly providers = new Map<string, SandboxProvider>(),
   ) {
-    if (isolated.pageBrowser || host.pageBrowser) {
+    if (
+      isolated.pageBrowser ||
+      host.pageBrowser ||
+      [...providers.values()].some((p) => p.pageBrowser)
+    ) {
       this.pageBrowser = (computer, request, context) => {
         const provider = this.route(computer);
         return provider.pageBrowser
@@ -75,7 +103,11 @@ export class HostAwareSandbox implements SandboxProvider {
   }
 
   private route(computer: ComputerRef) {
-    return computer.kind === "desktop" ? this.host : this.isolated;
+    if (computer.kind === "desktop") return this.host;
+    if (computer.kind === this.isolated.describe().id) return this.isolated;
+    const provider = this.providers.get(computer.kind);
+    if (!provider) throw new Error(`Computer provider ${computer.kind} is not configured`);
+    return provider;
   }
 
   async provision(
@@ -84,10 +116,24 @@ export class HostAwareSandbox implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      template?: string;
+      cpuCount?: number;
+      memoryMB?: number;
     },
     context: AdapterContext,
   ) {
-    const provider = (await this.hostEnabled()) ? this.host : this.isolated;
+    const requestedKind = request.providerKind ?? this.isolated.describe().id;
+    const useHost =
+      (request.providerKind === undefined || requestedKind === "docker") &&
+      (await this.hostEnabled());
+    const provider = useHost
+      ? this.host
+      : requestedKind === "desktop"
+        ? this.host
+        : requestedKind === this.isolated.describe().id
+          ? this.isolated
+          : this.providers.get(requestedKind);
+    if (!provider) throw new Error(`Computer provider ${requestedKind} is not configured`);
     const providerKind = provider.describe().id;
     return provider.provision(
       {

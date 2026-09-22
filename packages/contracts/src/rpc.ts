@@ -18,6 +18,9 @@ import {
   BotSectionSchema,
   CapabilityInstallSchema,
   ComputerModeSchema,
+  ComputerProfileInputSchema,
+  ComputerProfileKindSchema,
+  ComputerProfileSchema,
   ComputerReleaseReasonSchema,
   ComputerStatusSchema,
   ComputerUpdateSchema,
@@ -241,7 +244,15 @@ export const appContract = {
     duplicate: oc.input(botId).output(BotSchema),
     reorder: oc.input(ReorderBotsInput).output(z.object({ ok: z.literal(true) })),
     update: oc.input(UpdateBotInput).output(BotSchema),
-    setComputer: oc.input(z.object({ botId: Id, mode: ComputerModeSchema })).output(BotSchema),
+    setComputer: oc
+      .input(
+        z.object({
+          botId: Id,
+          mode: ComputerModeSchema,
+          profileId: Id.nullable().optional(),
+        }),
+      )
+      .output(BotSchema),
     archive: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     restore: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     remove: oc
@@ -254,6 +265,20 @@ export const appContract = {
         webhookConfigured: z.literal(true),
       }),
     ),
+  },
+  computerProfiles: {
+    list: oc.output(
+      z.object({
+        profiles: z.array(ComputerProfileSchema),
+        availableKinds: z.array(ComputerProfileKindSchema),
+        teamProfileId: Id.nullable(),
+      }),
+    ),
+    create: oc.input(ComputerProfileInputSchema).output(ComputerProfileSchema),
+    remove: oc.input(z.object({ profileId: Id })).output(z.object({ ok: z.literal(true) })),
+    setTeam: oc
+      .input(z.object({ profileId: Id.nullable() }))
+      .output(z.object({ teamProfileId: Id.nullable() })),
   },
   groups: {
     create: oc.input(CreateGroupInput).output(GroupSchema),

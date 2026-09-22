@@ -1,4 +1,5 @@
-import { type CommandResult, Sandbox, TimeoutError } from "@e2b/desktop";
+import { createHash } from "node:crypto";
+import { type CommandResult, Sandbox, Template, TimeoutError } from "@e2b/desktop";
 import type {
   AdapterContext,
   CommandRequest,
@@ -28,9 +29,25 @@ const E2B_BROWSER_PROFILES = `${E2B_WORKSPACE}/.browser-profiles`;
 
 export interface E2BSandboxSdk {
   create(options: ReturnType<typeof e2bCreateOptions>): Promise<Sandbox>;
+  create(template: string, options: ReturnType<typeof e2bCreateOptions>): Promise<Sandbox>;
   connect(id: string, options: { apiKey: string; timeoutMs: number }): Promise<Sandbox>;
   pause(id: string, options: { apiKey: string }): Promise<void>;
 }
+
+export interface E2BTemplateSdk {
+  exists(name: string, options: { apiKey: string }): Promise<boolean>;
+  build(
+    baseTemplate: string,
+    name: string,
+    options: { apiKey: string; cpuCount?: number; memoryMB?: number },
+  ): Promise<unknown>;
+}
+
+const e2bTemplates: E2BTemplateSdk = {
+  exists: (name, options) => Template.exists(name, options),
+  build: (baseTemplate, name, options) =>
+    Template.build(Template().fromTemplate(baseTemplate), name, options),
+};
 
 export function e2bCreateOptions(botId: string, apiKey: string) {
   return {
@@ -83,10 +100,12 @@ export class E2BSandboxProvider implements SandboxProvider {
   private readonly boxes = new Map<string, Sandbox>();
   private readonly connections = new Map<string, Promise<Sandbox>>();
   private readonly lastTouchedAt = new Map<string, number>();
+  private readonly templates = new Map<string, Promise<string>>();
 
   constructor(
     private readonly apiKey: string,
     private readonly sdk: E2BSandboxSdk = Sandbox as unknown as E2BSandboxSdk,
+    private readonly templateSdk: E2BTemplateSdk = e2bTemplates,
   ) {}
 
   describe() {
@@ -149,6 +168,9 @@ export class E2BSandboxProvider implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      template?: string;
+      cpuCount?: number;
+      memoryMB?: number;
     },
     _context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -173,7 +195,11 @@ export class E2BSandboxProvider implements SandboxProvider {
         if (!isSandboxGoneError(error)) throw error;
       }
     }
-    const desktop = await this.sdk.create(e2bCreateOptions(request.botId, this.apiKey));
+    const options = e2bCreateOptions(request.botId, this.apiKey);
+    const template = await this.resolveTemplate(request);
+    const desktop = template
+      ? await this.sdk.create(template, options)
+      : await this.sdk.create(options);
     this.boxes.set(desktop.sandboxId, desktop);
     this.lastTouchedAt.set(desktop.sandboxId, Date.now());
     return {
@@ -183,6 +209,51 @@ export class E2BSandboxProvider implements SandboxProvider {
       providerRef: desktop.sandboxId,
       fresh: true,
     };
+  }
+
+  private async resolveTemplate(request: {
+    template?: string;
+    cpuCount?: number;
+    memoryMB?: number;
+  }): Promise<string | undefined> {
+    const baseTemplate = request.template?.trim() || "desktop";
+    if (request.cpuCount === undefined && request.memoryMB === undefined) {
+      return request.template?.trim() || undefined;
+    }
+    const fingerprint = createHash("sha256")
+      .update(`${baseTemplate}\0${request.cpuCount ?? "default"}\0${request.memoryMB ?? "default"}`)
+      .digest("hex")
+      .slice(0, 20);
+    const name = `rakazo-computer-${fingerprint}`;
+    const existing = this.templates.get(name);
+    if (existing) return existing;
+    const pending = this.ensureTemplate(name, baseTemplate, request).catch((error) => {
+      this.templates.delete(name);
+      throw error;
+    });
+    this.templates.set(name, pending);
+    return pending;
+  }
+
+  private async ensureTemplate(
+    name: string,
+    baseTemplate: string,
+    resources: { cpuCount?: number; memoryMB?: number },
+  ): Promise<string> {
+    if (!(await this.templateSdk.exists(name, { apiKey: this.apiKey }))) {
+      try {
+        await this.templateSdk.build(baseTemplate, name, {
+          apiKey: this.apiKey,
+          ...(resources.cpuCount === undefined ? {} : { cpuCount: resources.cpuCount }),
+          ...(resources.memoryMB === undefined ? {} : { memoryMB: resources.memoryMB }),
+        });
+      } catch (error) {
+        // Separate workers may race to create the same content-addressed template. A completed
+        // winner makes the losing build safe to treat as success; other failures still surface.
+        if (!(await this.templateSdk.exists(name, { apiKey: this.apiKey }))) throw error;
+      }
+    }
+    return name;
   }
 
   async prepare(computer: ComputerRef, _context: AdapterContext): Promise<void> {
