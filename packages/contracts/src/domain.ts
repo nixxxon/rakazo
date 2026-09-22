@@ -7,6 +7,26 @@ import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from ".
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
 
+export const ComputerProfileKindSchema = z.enum(["docker", "e2b", "daytona", "box"]);
+export type ComputerProfileKind = z.infer<typeof ComputerProfileKindSchema>;
+
+export const ComputerProfileSchema = z.object({
+  id: Id,
+  name: z.string(),
+  kind: ComputerProfileKindSchema,
+  template: z.string().nullable(),
+  computerCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ComputerProfile = z.infer<typeof ComputerProfileSchema>;
+
+export const ComputerProfileInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  kind: ComputerProfileKindSchema,
+  template: z.string().trim().min(1).max(200).nullable().optional(),
+});
+
 export const MemoryScopeSchema = z.enum(["isolated", "shared"]);
 export type MemoryScopeValue = z.infer<typeof MemoryScopeSchema>;
 
@@ -59,6 +79,7 @@ export const BotSchema = z.object({
   preview: z.string(),
   status: z.string(),
   computerMode: ComputerModeSchema,
+  computerProfileId: Id.nullable(),
   updatedAt: z.string(),
   createdAt: z.string(),
   voiceId: z.string().nullable(),
@@ -289,6 +310,7 @@ export const CreateBotInput = z.object({
   notifyOnFinish: z.boolean().default(true),
   color: BotAvatarValueSchema.optional(),
   computerMode: ComputerModeSchema.default("team"),
+  computerProfileId: Id.nullable().optional(),
   /** Idempotency key within a space (unique with spaceId). */
   spawnKey: z.string().trim().min(1).max(120).optional(),
 });

@@ -16,6 +16,18 @@ Published-images [Compose](../infra/compose/docker-compose.images.yml) defaults 
 It always starts the supervisor and requires `SANDBOX_SUPERVISOR_TOKEN`, including for `none`
 and remote providers. This stack credential does not replace a remote provider's API key.
 
+## Computer profiles
+
+Deployment owners can create Space-scoped profiles under **Settings → Computer** and assign one
+to the shared Team computer or to a Private computer. A profile selects a configured provider and,
+for E2B, may also select an E2B template ID. `SANDBOX_PROVIDER` remains the default for computers
+without a profile; adding the other provider credentials makes those providers available to profiles.
+
+Provider and template choices are immutable. Create a new profile and switch the computer when its
+bot is stopped and no user has control. Rakazo checkpoints the persistent home, destroys the old
+sandbox, and restores the home when the computer next starts. A profile cannot be deleted while a
+computer references it.
+
 ## `docker` (in-stack supervisor)
 
 Compose starts a **sandbox supervisor** (from the app image) on the internal

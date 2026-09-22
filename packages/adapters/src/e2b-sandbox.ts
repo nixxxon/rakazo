@@ -28,6 +28,7 @@ const E2B_BROWSER_PROFILES = `${E2B_WORKSPACE}/.browser-profiles`;
 
 export interface E2BSandboxSdk {
   create(options: ReturnType<typeof e2bCreateOptions>): Promise<Sandbox>;
+  create(template: string, options: ReturnType<typeof e2bCreateOptions>): Promise<Sandbox>;
   connect(id: string, options: { apiKey: string; timeoutMs: number }): Promise<Sandbox>;
   pause(id: string, options: { apiKey: string }): Promise<void>;
 }
@@ -149,6 +150,7 @@ export class E2BSandboxProvider implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      template?: string;
     },
     _context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -173,7 +175,10 @@ export class E2BSandboxProvider implements SandboxProvider {
         if (!isSandboxGoneError(error)) throw error;
       }
     }
-    const desktop = await this.sdk.create(e2bCreateOptions(request.botId, this.apiKey));
+    const options = e2bCreateOptions(request.botId, this.apiKey);
+    const desktop = request.template
+      ? await this.sdk.create(request.template, options)
+      : await this.sdk.create(options);
     this.boxes.set(desktop.sandboxId, desktop);
     this.lastTouchedAt.set(desktop.sandboxId, Date.now());
     return {

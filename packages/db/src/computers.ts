@@ -42,6 +42,8 @@ export async function ensureComputerRecord(
     userId: string;
     botId?: string;
     kind: string;
+    profileId?: string | null;
+    template?: string | null;
   },
 ) {
   const scopeKey = computerScopeKey(input.mode, input.spaceId, input.botId);
@@ -54,6 +56,8 @@ export async function ensureComputerRecord(
       scopeKey,
       homeKey: computerHomeKey(input.mode, input.spaceId, input.botId),
       kind: input.kind,
+      profileId: input.profileId ?? null,
+      template: input.template ?? null,
     },
     update: {},
   });

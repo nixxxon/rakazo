@@ -15,6 +15,27 @@ const context = {
 };
 
 describe("E2B computer backend", () => {
+  it("uses the selected E2B template when provisioning", async () => {
+    const sdk = {
+      create: vi.fn().mockResolvedValue({ sandboxId: "profile-sandbox" }),
+    } as unknown as E2BSandboxSdk;
+    const provider = new E2BSandboxProvider("test-key", sdk);
+
+    await expect(
+      provider.provision(
+        { botId: "bot-1", homePath: "/unused", providerKind: "e2b", template: "gpu-large" },
+        context,
+      ),
+    ).resolves.toMatchObject({ providerRef: "profile-sandbox", fresh: true });
+    expect(sdk.create).toHaveBeenCalledWith(
+      "gpu-large",
+      expect.objectContaining({
+        apiKey: "test-key",
+        metadata: { botId: "bot-1", rakazo: "computer" },
+      }),
+    );
+  });
+
   it("revokes an extra display's control without starting or waiting for its view", async () => {
     const command = vi.fn(async (value: string) => {
       if (value.includes("RAKAZO_SCREEN_INDEX=")) {
