@@ -3868,3 +3868,87 @@ msgstr "Cor {0}"
 
 msgid "Color {color}"
 msgstr "Cor {color}"
+
+#: src/pages/ComputerProfilesSettings.tsx:242
+msgid "Base template (advanced)"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:137
+msgid "computer"
+msgstr ""
+
+#: src/pages/shell/bot-panel.tsx:93
+msgid "Computer profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:118
+msgid "Computer profiles"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:137
+msgid "computers"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:56
+msgid "Could not create computer profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:80
+msgid "Could not delete computer profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:34
+msgid "Could not load computer profiles"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:70
+msgid "Could not switch computer profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:262
+msgid "CPU and memory are optional. Blank values use the deployment-wide Docker defaults."
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:284
+msgid "Create profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:149
+msgid "Delete profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:253
+msgid "Leave CPU and memory blank to keep the base template's resources. Set both to make Rakazo build and reuse a sized template. A blank base template uses E2B's desktop template."
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:222
+msgid "Memory (MB)"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:148
+msgid "Move computers to another profile first"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:167
+msgid "New profile"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:159
+msgid "No custom profiles yet."
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:94
+msgid "Profile"
+msgstr ""
+
+#: src/pages/Shell.tsx:3449
+msgid "Show computer"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:88
+msgid "Team computer"
+msgstr ""
+
+#: src/pages/ComputerProfilesSettings.tsx:205
+msgid "vCPUs"
+msgstr ""

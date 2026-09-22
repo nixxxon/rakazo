@@ -3,13 +3,12 @@ import type { AvatarStyle, SpaceMemoryConfig } from "@rakazo/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
 import { Brain, CloudDownload, Cpu, Gauge, Monitor, Settings, Volume2, XIcon } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import {
-  ComputerSettingsPanel,
   GeneralSettingsPanels,
   UpdatesSettingsPanel,
   UsageSettingsPanel,
 } from "./AccountSettingsOverlay";
+import { ComputerProfilesSettings } from "./ComputerProfilesSettings";
 import { MemorySettingsOverlay } from "./MemorySettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
@@ -37,7 +36,6 @@ export function SettingsOverlay({
   avatarStyle,
   onAvatarStyleChange,
   isDeploymentOwner = false,
-  sandboxProvider,
   messagingEnabled = false,
   onOpenMessaging,
   memoryConfig,
@@ -52,7 +50,6 @@ export function SettingsOverlay({
   avatarStyle: AvatarStyle;
   onAvatarStyleChange: (style: AvatarStyle) => Promise<void>;
   isDeploymentOwner?: boolean;
-  sandboxProvider?: string | null;
   messagingEnabled?: boolean;
   onOpenMessaging?: () => void;
   memoryConfig: SpaceMemoryConfig | null | undefined;
@@ -66,7 +63,7 @@ export function SettingsOverlay({
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
-  const showComputer = isDeploymentOwner && computersAreUnavailable(sandboxProvider);
+  const showComputer = isDeploymentOwner;
   const panelBusy = memoryBusy || voiceBusy;
 
   useEffect(() => {
@@ -210,7 +207,7 @@ export function SettingsOverlay({
               {section === "usage" ? (
                 <UsageSettingsPanel usage={usage} panelRef={usageRef} />
               ) : null}
-              {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
+              {section === "computer" && showComputer ? <ComputerProfilesSettings /> : null}
               {section === "updates" ? (
                 <UpdatesSettingsPanel isDeploymentOwner={isDeploymentOwner} />
               ) : null}

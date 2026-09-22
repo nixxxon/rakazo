@@ -2250,12 +2250,14 @@ export function ShellPage() {
     title: string;
     description: string;
     computerMode: ComputerMode;
+    computerProfileId: string | null;
   }) {
     const isFirstBot = botsRef.current.length === 0;
     const bot = await rpc.bots.create({
       ...normalizeCreateBotProfile(input),
       notifyOnFinish: true,
       computerMode: input.computerMode,
+      computerProfileId: input.computerProfileId,
     });
     setBots((current) =>
       current.some((item) => item.id === bot.id) ? current : [bot, ...current],
@@ -3589,11 +3591,15 @@ export function ShellPage() {
                 bot={active}
                 memoryProviderConfigured={memoryProviderConfig != null}
                 onSkillsChange={setAgentSkills}
-                onSave={async ({ computerMode, ...patch }) => {
-                  if (computerMode !== active.computerMode) {
+                onSave={async ({ computerMode, computerProfileId, ...patch }) => {
+                  if (
+                    computerMode !== active.computerMode ||
+                    (computerMode === "dedicated" && computerProfileId !== active.computerProfileId)
+                  ) {
                     await rpc.bots.setComputer({
                       botId: active.id,
                       mode: computerMode,
+                      profileId: computerProfileId,
                     });
                   }
                   await rpc.bots.update({ botId: active.id, ...patch });
@@ -4138,7 +4144,6 @@ export function ShellPage() {
             initialSection={settingsSection}
             avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
-            sandboxProvider={bootstrapMe?.sandboxProvider}
             messagingEnabled={messagingSurfaceEnabled}
             onOpenMessaging={() => {
               setSettingsOpen(false);

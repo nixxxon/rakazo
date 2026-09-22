@@ -141,7 +141,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async provision(
-    request: { botId: string; homePath: string },
+    request: { botId: string; homePath: string; cpuCount?: number; memoryMB?: number },
     context: AdapterContext,
   ): Promise<ComputerRef> {
     const res = await fetch(this.url("/computers"), {
@@ -151,6 +151,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         botId: request.botId,
         homePath: request.homePath,
         spaceId: context.spaceId,
+        cpuCount: request.cpuCount,
+        memoryMB: request.memoryMB,
       }),
       signal: context.signal,
     });
