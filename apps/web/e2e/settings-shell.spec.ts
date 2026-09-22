@@ -28,6 +28,14 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await expect(settings.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-shell-general");
 
+  await settings.getByTestId("settings-nav-computer").click();
+  await expect(settings).toHaveAttribute("data-settings-section", "computer");
+  await expect(settings.getByRole("heading", { name: "Computer", exact: true })).toBeVisible();
+  await expect(settings.getByTestId("computer-profiles-settings")).toBeVisible();
+  await expect(settings.getByText("Team computer", { exact: true })).toBeVisible();
+  await expect(settings.getByText("No custom profiles yet.", { exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-shell-computer-profiles");
+
   await settings.getByTestId("settings-nav-models").click();
   await expect(settings).toHaveAttribute("data-settings-section", "models");
   await expect(settings.getByRole("heading", { name: "Models", exact: true })).toBeVisible();

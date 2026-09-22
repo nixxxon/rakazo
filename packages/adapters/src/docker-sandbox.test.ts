@@ -24,6 +24,24 @@ describe("Docker sandbox", () => {
     vi.unstubAllGlobals();
   });
 
+  it("forwards profile resource limits to the supervisor", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ id: "computer" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new DockerSandboxProvider("http://supervisor.test", "test-token");
+
+    await provider.provision(
+      { botId: "bot", homePath: "/tmp/bot", cpuCount: 4, memoryMB: 8192 },
+      context,
+    );
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      cpuCount: 4,
+      memoryMB: 8192,
+    });
+  });
+
   it("sends the bounded timeout to the supervisor and preserves its honest result", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({

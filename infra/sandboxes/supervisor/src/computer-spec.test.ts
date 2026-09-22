@@ -669,6 +669,37 @@ describe("computer resource limits", () => {
     expect(HostConfig.PidsLimit).toBe(2048);
   });
 
+  it("applies smaller per-profile limits without exceeding deployment ceilings", () => {
+    const { HostConfig } = containerCreateOptions({
+      ...createInput,
+      cpuCount: 1,
+      memoryMB: 1024,
+    });
+    expect(HostConfig.Memory).toBe(1024 * 1024 ** 2);
+    expect(HostConfig.MemorySwap).toBe(HostConfig.Memory);
+    expect(HostConfig.NanoCpus).toBe(1e9);
+
+    const capped = containerCreateOptions({
+      ...createInput,
+      cpuCount: 8,
+      memoryMB: 8192,
+    });
+    expect(capped.HostConfig.Memory).toBe(2 * 1024 ** 3);
+    expect(capped.HostConfig.NanoCpus).toBe(2e9);
+  });
+
+  it("applies profile limits directly when deployment ceilings are unlimited", () => {
+    process.env.RAKAZO_COMPUTER_MEMORY = "unlimited";
+    process.env.RAKAZO_COMPUTER_CPUS = "unlimited";
+    const { HostConfig } = containerCreateOptions({
+      ...createInput,
+      cpuCount: 4,
+      memoryMB: 4096,
+    });
+    expect(HostConfig.Memory).toBe(4 * 1024 ** 3);
+    expect(HostConfig.NanoCpus).toBe(4e9);
+  });
+
   it("falls back to the defaults when a variable is blank", () => {
     // .env.example ships these keys blank; a blank value must read as "unset".
     process.env.RAKAZO_COMPUTER_MEMORY = "";

@@ -87,7 +87,10 @@ async function main() {
   const sandboxProvider = resolveSandboxProvider(process.env);
   const sandbox = createRunSandbox(sandboxProvider, {
     supervisorUrl: process.env.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
-    supervisorToken: sandboxProvider === "docker" ? resolveSupervisorToken(process.env) : undefined,
+    supervisorToken:
+      sandboxProvider === "docker"
+        ? resolveSupervisorToken(process.env)
+        : process.env.SANDBOX_SUPERVISOR_TOKEN?.trim() || undefined,
     e2bApiKey: process.env.E2B_API_KEY,
     daytonaApiKey: process.env.DAYTONA_API_KEY,
     daytonaApiUrl: process.env.DAYTONA_API_URL,

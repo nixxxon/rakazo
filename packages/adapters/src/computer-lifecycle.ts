@@ -286,6 +286,9 @@ export async function provisionComputer(
         homePath,
         providerRef: existing.providerRef ?? undefined,
         providerKind: existing.kind as ComputerRef["kind"],
+        template: existing.template ?? undefined,
+        cpuCount: existing.cpuCount ?? undefined,
+        memoryMB: existing.memoryMB ?? undefined,
       },
       context,
     );
