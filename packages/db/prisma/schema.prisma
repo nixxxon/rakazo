@@ -916,6 +916,8 @@ model Computer {
   homeRevision            String                   @default("empty")
   kind                    String
   template                String?
+  cpuCount                Int?
+  memoryMB                 Int?
   profileId               String?
   profile                 ComputerProfile?         @relation(fields: [profileId], references: [id], onDelete: Restrict)
   providerRef             String?
@@ -950,6 +952,8 @@ model ComputerProfile {
   name      String
   kind      String
   template  String?
+  cpuCount  Int?
+  memoryMB  Int?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   computers Computer[]

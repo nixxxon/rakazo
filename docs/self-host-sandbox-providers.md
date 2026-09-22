@@ -20,13 +20,26 @@ and remote providers. This stack credential does not replace a remote provider's
 
 Deployment owners can create Space-scoped profiles under **Settings → Computer** and assign one
 to the shared Team computer or to a Private computer. A profile selects a configured provider and,
-for E2B, may also select an E2B template ID. `SANDBOX_PROVIDER` remains the default for computers
-without a profile; adding the other provider credentials makes those providers available to profiles.
+may also select CPU and memory and, for E2B, an optional base template. `SANDBOX_PROVIDER` remains the
+default for computers without a profile; adding the other provider credentials makes those providers
+available to profiles.
 
-Provider and template choices are immutable. Create a new profile and switch the computer when its
-bot is stopped and no user has control. Rakazo checkpoints the persistent home, destroys the old
-sandbox, and restores the home when the computer next starts. A profile cannot be deleted while a
-computer references it.
+E2B applies CPU and memory at template-build time rather than sandbox creation time. When either
+resource is set, Rakazo uses the E2B API to build a managed template derived from the selected base
+(`desktop` by default), then caches and reuses it for matching base-template/CPU/memory settings.
+The first computer using a new combination can therefore take longer to start. Managed templates
+are intentionally retained when a Rakazo profile is deleted: another profile or deployment using
+the same E2B project may still reuse them, and deleting a profile must not remove shared provider
+resources unexpectedly.
+
+Docker profiles apply CPU and memory as per-container runtime limits. Deployment-wide
+`RAKAZO_COMPUTER_CPUS` and `RAKAZO_COMPUTER_MEMORY` limits remain safety ceilings, so a profile can
+request a smaller container but cannot raise it above the operator's configured maximum.
+
+Provider, template, and resource choices are immutable. Create a new profile and switch the computer
+when its bot is stopped and no user has control. Rakazo checkpoints the persistent home, destroys the
+old sandbox, and restores the home when the computer next starts. A profile cannot be deleted while
+a computer references it.
 
 ## `docker` (in-stack supervisor)
 

@@ -1131,6 +1131,8 @@ export function createRouter(deps: RouterDeps) {
           profileId: profile?.id ?? null,
           kind: profile?.kind ?? (await defaultComputerKind(deps)),
           template: profile?.template ?? null,
+          cpuCount: profile?.cpuCount ?? null,
+          memoryMB: profile?.memoryMB ?? null,
         };
         const dedicated = await deps.prisma.computer.findUnique({
           where: { scopeKey: `bot:${bot.id}` },
@@ -1140,7 +1142,9 @@ export function createRouter(deps: RouterDeps) {
           dedicated &&
           (dedicated.profileId !== desired.profileId ||
             dedicated.kind !== desired.kind ||
-            dedicated.template !== desired.template)
+            dedicated.template !== desired.template ||
+            dedicated.cpuCount !== desired.cpuCount ||
+            dedicated.memoryMB !== desired.memoryMB)
         ) {
           await switchComputerProfile(deps, context.actor, dedicated, desired, bot.id);
         }
@@ -1149,6 +1153,8 @@ export function createRouter(deps: RouterDeps) {
             id: desired.profileId,
             kind: desired.kind,
             template: desired.template,
+            cpuCount: desired.cpuCount,
+            memoryMB: desired.memoryMB,
           });
         }
         const claimed = await deps.prisma.$transaction(async (tx) => {
@@ -1204,6 +1210,8 @@ export function createRouter(deps: RouterDeps) {
             id: desired.profileId,
             kind: desired.kind,
             template: desired.template,
+            cpuCount: desired.cpuCount,
+            memoryMB: desired.memoryMB,
           });
         } finally {
           await deps.prisma.bot.updateMany({
@@ -1345,7 +1353,12 @@ export function createRouter(deps: RouterDeps) {
         }
         if (input.kind !== "e2b" && input.template) {
           throw new ORPCError("BAD_REQUEST", {
-            message: "Templates are currently supported only for E2B profiles",
+            message: "Templates are supported only for E2B profiles",
+          });
+        }
+        if (input.kind !== "e2b" && input.kind !== "docker" && (input.cpuCount || input.memoryMB)) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Compute resources are supported only for E2B and Docker profiles",
           });
         }
         const profile = await deps.prisma.computerProfile.create({
@@ -1354,6 +1367,10 @@ export function createRouter(deps: RouterDeps) {
             name: input.name,
             kind: input.kind,
             template: input.kind === "e2b" ? input.template || null : null,
+            cpuCount:
+              input.kind === "e2b" || input.kind === "docker" ? (input.cpuCount ?? null) : null,
+            memoryMB:
+              input.kind === "e2b" || input.kind === "docker" ? (input.memoryMB ?? null) : null,
           },
           include: { _count: { select: { computers: true } } },
         });
@@ -1391,11 +1408,15 @@ export function createRouter(deps: RouterDeps) {
           profileId: profile?.id ?? null,
           kind: profile?.kind ?? (await defaultComputerKind(deps)),
           template: profile?.template ?? null,
+          cpuCount: profile?.cpuCount ?? null,
+          memoryMB: profile?.memoryMB ?? null,
         };
         if (
           teamComputer.profileId !== desired.profileId ||
           teamComputer.kind !== desired.kind ||
-          teamComputer.template !== desired.template
+          teamComputer.template !== desired.template ||
+          teamComputer.cpuCount !== desired.cpuCount ||
+          teamComputer.memoryMB !== desired.memoryMB
         ) {
           const botId = teamComputer.bots[0]?.id;
           if (!botId) throw new ORPCError("BAD_REQUEST", { message: "Team computer has no bots" });
@@ -5250,6 +5271,8 @@ function computerProfileDto(profile: {
   name: string;
   kind: string;
   template: string | null;
+  cpuCount?: number | null;
+  memoryMB?: number | null;
   createdAt: Date;
   updatedAt: Date;
   _count: { computers: number };
@@ -5259,6 +5282,8 @@ function computerProfileDto(profile: {
     name: profile.name,
     kind: profile.kind as "docker" | "e2b" | "daytona" | "box",
     template: profile.template,
+    cpuCount: profile.cpuCount ?? null,
+    memoryMB: profile.memoryMB ?? null,
     computerCount: profile._count.computers,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
@@ -5273,6 +5298,8 @@ async function switchComputerProfile(
     homeKey: string;
     kind: string;
     template: string | null;
+    cpuCount: number | null;
+    memoryMB: number | null;
     profileId: string | null;
     providerRef: string | null;
     state: string;
@@ -5281,7 +5308,13 @@ async function switchComputerProfile(
     controlLeaseExpiresAt: Date | null;
     updatedAt: Date;
   },
-  profile: { profileId: string | null; kind: string; template: string | null },
+  profile: {
+    profileId: string | null;
+    kind: string;
+    template: string | null;
+    cpuCount: number | null;
+    memoryMB: number | null;
+  },
   botId: string,
 ) {
   if (computer.state === "booting" || computer.state === "suspending") {
@@ -5330,6 +5363,8 @@ async function switchComputerProfile(
         profileId: profile.profileId,
         kind: profile.kind,
         template: profile.template,
+        cpuCount: profile.cpuCount,
+        memoryMB: profile.memoryMB,
         providerRef: null,
         state: "stopped",
         controlHolder: "none",

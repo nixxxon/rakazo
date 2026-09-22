@@ -488,6 +488,8 @@ export function createRepos(prisma: PrismaClient) {
               kind: profile?.kind ?? kind,
               profileId: profile?.id ?? null,
               template: profile?.template ?? null,
+              cpuCount: profile?.cpuCount ?? null,
+              memoryMB: profile?.memoryMB ?? null,
             });
             await tx.bot.update({ where: { id: created.id }, data: { computerId: dedicated.id } });
           }
@@ -581,7 +583,13 @@ export function createRepos(prisma: PrismaClient) {
       actor: Actor,
       botId: string,
       mode: ComputerMode,
-      profile?: { id: string | null; kind: string; template: string | null },
+      profile?: {
+        id: string | null;
+        kind: string;
+        template: string | null;
+        cpuCount: number | null;
+        memoryMB: number | null;
+      },
     ): Promise<Bot> {
       const bot = await prisma.bot.findFirst({
         where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
@@ -599,6 +607,8 @@ export function createRepos(prisma: PrismaClient) {
         id: null,
         kind: bot.computer.kind,
         template: null,
+        cpuCount: null,
+        memoryMB: null,
       };
       const computer = await ensureComputerRecord(prisma, {
         mode,
@@ -608,12 +618,16 @@ export function createRepos(prisma: PrismaClient) {
         kind: desired.kind,
         profileId: desired.id,
         template: desired.template,
+        cpuCount: desired.cpuCount,
+        memoryMB: desired.memoryMB,
       });
       if (
         mode === "dedicated" &&
         (computer.profileId !== desired.id ||
           computer.kind !== desired.kind ||
-          computer.template !== desired.template)
+          computer.template !== desired.template ||
+          computer.cpuCount !== desired.cpuCount ||
+          computer.memoryMB !== desired.memoryMB)
       ) {
         const reconfigured = await prisma.computer.updateMany({
           where: { id: computer.id, providerRef: null, state: "stopped" },
@@ -621,6 +635,8 @@ export function createRepos(prisma: PrismaClient) {
             profileId: desired.id,
             kind: desired.kind,
             template: desired.template,
+            cpuCount: desired.cpuCount,
+            memoryMB: desired.memoryMB,
           },
         });
         if (reconfigured.count !== 1)

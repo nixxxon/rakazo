@@ -18,6 +18,8 @@ export function ComputerProfilesSettings() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<ComputerProfileKind | "">("");
   const [template, setTemplate] = useState("");
+  const [cpuCount, setCpuCount] = useState("");
+  const [memoryMB, setMemoryMB] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,9 +44,13 @@ export function ComputerProfilesSettings() {
         name: name.trim(),
         kind,
         template: kind === "e2b" ? template.trim() || null : null,
+        cpuCount: kind === "e2b" || kind === "docker" ? optionalInteger(cpuCount) : null,
+        memoryMB: kind === "e2b" || kind === "docker" ? optionalInteger(memoryMB) : null,
       });
       setName("");
       setTemplate("");
+      setCpuCount("");
+      setMemoryMB("");
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not create computer profile`);
@@ -125,6 +131,8 @@ export function ComputerProfilesSettings() {
                 <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
                   {profile.kind}
                   {profile.template ? ` · ${profile.template}` : ""}
+                  {profile.cpuCount ? ` · ${profile.cpuCount} vCPU` : ""}
+                  {profile.memoryMB ? ` · ${profile.memoryMB} MB` : ""}
                   {profile.computerCount
                     ? ` · ${profile.computerCount} ${profile.computerCount === 1 ? t`computer` : t`computers`}`
                     : ""}
@@ -178,6 +186,8 @@ export function ComputerProfilesSettings() {
               onChange={(event) => {
                 setKind(event.target.value as ComputerProfileKind);
                 setTemplate("");
+                setCpuCount("");
+                setMemoryMB("");
               }}
             >
               {settings?.availableKinds.map((availableKind) => (
@@ -188,25 +198,78 @@ export function ComputerProfilesSettings() {
             </NativeSelect>
           </label>
         </div>
-        {kind === "e2b" ? (
-          <label
-            htmlFor={`${ids}-profile-template`}
-            className="mt-3 block text-[13px] text-muted-foreground"
-          >
-            <Trans>Template ID</Trans>
-            <Input
-              id={`${ids}-profile-template`}
-              className="mt-1.5"
-              value={template}
-              maxLength={200}
-              placeholder="desktop"
-              onChange={(event) => setTemplate(event.target.value)}
-            />
-          </label>
+        {kind === "e2b" || kind === "docker" ? (
+          <div className="mt-3 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label htmlFor={`${ids}-profile-cpus`} className="text-[13px] text-muted-foreground">
+                <Trans>vCPUs</Trans>
+                <Input
+                  id={`${ids}-profile-cpus`}
+                  className="mt-1.5"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  value={cpuCount}
+                  placeholder="2"
+                  onChange={(event) => setCpuCount(event.target.value)}
+                />
+              </label>
+              <label
+                htmlFor={`${ids}-profile-memory`}
+                className="text-[13px] text-muted-foreground"
+              >
+                <Trans>Memory (MB)</Trans>
+                <Input
+                  id={`${ids}-profile-memory`}
+                  className="mt-1.5"
+                  type="number"
+                  min={2}
+                  step={2}
+                  inputMode="numeric"
+                  value={memoryMB}
+                  placeholder="2048"
+                  onChange={(event) => setMemoryMB(event.target.value)}
+                />
+              </label>
+            </div>
+            {kind === "e2b" ? (
+              <>
+                <label
+                  htmlFor={`${ids}-profile-template`}
+                  className="block text-[13px] text-muted-foreground"
+                >
+                  <Trans>Base template (advanced)</Trans>
+                  <Input
+                    id={`${ids}-profile-template`}
+                    className="mt-1.5"
+                    value={template}
+                    maxLength={200}
+                    placeholder="desktop"
+                    onChange={(event) => setTemplate(event.target.value)}
+                  />
+                </label>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                  <Trans>
+                    Rakazo creates and reuses an E2B template with these resources. Leave the base
+                    template blank to use E2B's desktop template.
+                  </Trans>
+                </p>
+              </>
+            ) : null}
+          </div>
         ) : null}
         <Button
           className="mt-4"
-          disabled={!name.trim() || !kind || creating}
+          disabled={
+            !name.trim() ||
+            !kind ||
+            creating ||
+            !isOptionalPositiveInteger(cpuCount) ||
+            !isOptionalPositiveInteger(memoryMB) ||
+            (kind === "e2b" && memoryMB !== "" && Number(memoryMB) % 2 !== 0) ||
+            (kind === "docker" && memoryMB !== "" && Number(memoryMB) < 6)
+          }
           onClick={() => void createProfile()}
         >
           <Plus size={15} />
@@ -220,4 +283,12 @@ export function ComputerProfilesSettings() {
       </section>
     </div>
   );
+}
+
+function optionalInteger(value: string) {
+  return value === "" ? null : Number(value);
+}
+
+function isOptionalPositiveInteger(value: string) {
+  return value === "" || (Number.isInteger(Number(value)) && Number(value) > 0);
 }

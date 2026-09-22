@@ -53,6 +53,8 @@ describe("computer profiles", () => {
             name: "Powerful E2B",
             kind: "e2b",
             template: "gpu-large",
+            cpuCount: 8,
+            memoryMB: 16_384,
             createdAt: now,
             updatedAt: now,
             _count: { computers: 1 },
@@ -72,6 +74,8 @@ describe("computer profiles", () => {
             id: "profile-1",
             kind: "e2b",
             template: "gpu-large",
+            cpuCount: 8,
+            memoryMB: 16_384,
             computerCount: 1,
           }),
         ],
@@ -81,13 +85,15 @@ describe("computer profiles", () => {
     });
   });
 
-  it("creates an immutable provider and template selection", async () => {
+  it("creates an immutable provider, template, and resource selection", async () => {
     const now = new Date("2026-09-22T10:00:00.000Z");
     const create = vi.fn().mockResolvedValue({
       id: "profile-1",
       name: "Powerful E2B",
       kind: "e2b",
       template: "gpu-large",
+      cpuCount: 8,
+      memoryMB: 16_384,
       createdAt: now,
       updatedAt: now,
       _count: { computers: 0 },
@@ -95,13 +101,25 @@ describe("computer profiles", () => {
     const response = await call(
       depsWith({ computerProfile: { create } }),
       "computerProfiles/create",
-      { name: "Powerful E2B", kind: "e2b", template: "gpu-large" },
+      {
+        name: "Powerful E2B",
+        kind: "e2b",
+        template: "gpu-large",
+        cpuCount: 8,
+        memoryMB: 16_384,
+      },
     );
 
     expect(response.status).toBe(200);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ spaceId: "space-1", kind: "e2b", template: "gpu-large" }),
+        data: expect.objectContaining({
+          spaceId: "space-1",
+          kind: "e2b",
+          template: "gpu-large",
+          cpuCount: 8,
+          memoryMB: 16_384,
+        }),
       }),
     );
   });
@@ -116,6 +134,62 @@ describe("computer profiles", () => {
     );
 
     expect(response.status).toBe(403);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects E2B memory that cannot be used for a template build", async () => {
+    const create = vi.fn();
+    const response = await call(
+      depsWith({ computerProfile: { create } }),
+      "computerProfiles/create",
+      { name: "Invalid E2B", kind: "e2b", cpuCount: 4, memoryMB: 8193 },
+    );
+
+    expect(response.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("creates Docker profiles with per-container compute limits", async () => {
+    const now = new Date("2026-09-22T10:00:00.000Z");
+    const create = vi.fn().mockResolvedValue({
+      id: "profile-docker",
+      name: "Sized Docker",
+      kind: "docker",
+      template: null,
+      cpuCount: 4,
+      memoryMB: 8192,
+      createdAt: now,
+      updatedAt: now,
+      _count: { computers: 0 },
+    });
+    const response = await call(
+      depsWith({ computerProfile: { create } }),
+      "computerProfiles/create",
+      { name: "Sized Docker", kind: "docker", cpuCount: 4, memoryMB: 8192 },
+    );
+
+    expect(response.status).toBe(200);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: "docker",
+          template: null,
+          cpuCount: 4,
+          memoryMB: 8192,
+        }),
+      }),
+    );
+  });
+
+  it("rejects Docker memory below the engine minimum", async () => {
+    const create = vi.fn();
+    const response = await call(
+      depsWith({ computerProfile: { create } }),
+      "computerProfiles/create",
+      { name: "Tiny Docker", kind: "docker", memoryMB: 4 },
+    );
+
+    expect(response.status).toBe(400);
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -156,6 +230,8 @@ describe("computer profiles", () => {
               spaceId: "space-1",
               kind: "e2b",
               template: "gpu-large",
+              cpuCount: 8,
+              memoryMB: 16_384,
             }),
           },
           computer: {
@@ -164,6 +240,8 @@ describe("computer profiles", () => {
               homeKey: "team-space-1",
               kind: "docker",
               template: null,
+              cpuCount: null,
+              memoryMB: null,
               profileId: null,
               providerRef: "old-sandbox",
               state: "stopped",
@@ -196,6 +274,8 @@ describe("computer profiles", () => {
           profileId: "profile-1",
           kind: "e2b",
           template: "gpu-large",
+          cpuCount: 8,
+          memoryMB: 16_384,
           providerRef: null,
           state: "stopped",
         }),

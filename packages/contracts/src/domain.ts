@@ -15,17 +15,38 @@ export const ComputerProfileSchema = z.object({
   name: z.string(),
   kind: ComputerProfileKindSchema,
   template: z.string().nullable(),
+  cpuCount: z.number().int().positive().nullable(),
+  memoryMB: z.number().int().positive().nullable(),
   computerCount: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type ComputerProfile = z.infer<typeof ComputerProfileSchema>;
 
-export const ComputerProfileInputSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  kind: ComputerProfileKindSchema,
-  template: z.string().trim().min(1).max(200).nullable().optional(),
-});
+export const ComputerProfileInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    kind: ComputerProfileKindSchema,
+    template: z.string().trim().min(1).max(200).nullable().optional(),
+    cpuCount: z.number().int().positive().nullable().optional(),
+    memoryMB: z.number().int().positive().nullable().optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.kind === "e2b" && input.memoryMB != null && input.memoryMB % 2 !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["memoryMB"],
+        message: "E2B memory must be an even number",
+      });
+    }
+    if (input.kind === "docker" && input.memoryMB != null && input.memoryMB < 6) {
+      context.addIssue({
+        code: "custom",
+        path: ["memoryMB"],
+        message: "Docker memory must be at least 6 MB",
+      });
+    }
+  });
 
 export const MemoryScopeSchema = z.enum(["isolated", "shared"]);
 export type MemoryScopeValue = z.infer<typeof MemoryScopeSchema>;

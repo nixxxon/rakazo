@@ -139,10 +139,20 @@ describe("host-aware sandbox", () => {
     );
 
     const computer = await sandbox.provision(
-      { botId: "profile", homePath: "/tmp/profile", providerKind: "e2b" },
+      {
+        botId: "profile",
+        homePath: "/tmp/profile",
+        providerKind: "e2b",
+        template: "desktop",
+        cpuCount: 8,
+        memoryMB: 16_384,
+      },
       ctx,
     );
-    expect(provision).toHaveBeenCalledOnce();
+    expect(provision).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "desktop", cpuCount: 8, memoryMB: 16_384 }),
+      ctx,
+    );
     await sandbox.destroy({ ...computer, kind: "e2b" }, ctx);
     expect(destroy).toHaveBeenCalledOnce();
   });

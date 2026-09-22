@@ -95,6 +95,8 @@ export interface SandboxProvider {
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
       template?: string;
+      cpuCount?: number;
+      memoryMB?: number;
     },
     context: AdapterContext,
   ): Promise<ComputerRef>;

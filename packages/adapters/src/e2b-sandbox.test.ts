@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { Sandbox, SandboxNotFoundError, TimeoutError } from "@e2b/desktop";
 import { describe, expect, it, vi } from "vitest";
 import { shouldSkipPortableWorkspaceFile } from "./computer-workspace.js";
-import type { E2BSandboxSdk } from "./e2b-sandbox.js";
+import type { E2BSandboxSdk, E2BTemplateSdk } from "./e2b-sandbox.js";
 import { E2BSandboxProvider, isSandboxGoneError } from "./e2b-sandbox.js";
 import { desktopCommandResponder } from "./linux-desktop.test-support.js";
 
@@ -34,6 +34,90 @@ describe("E2B computer backend", () => {
         metadata: { botId: "bot-1", rakazo: "computer" },
       }),
     );
+  });
+
+  it("builds and reuses a managed template for requested CPU and memory", async () => {
+    const sdk = {
+      create: vi
+        .fn()
+        .mockResolvedValueOnce({ sandboxId: "profile-sandbox-1" })
+        .mockResolvedValueOnce({ sandboxId: "profile-sandbox-2" }),
+    } as unknown as E2BSandboxSdk;
+    const templates = {
+      exists: vi.fn().mockResolvedValue(false),
+      build: vi.fn().mockResolvedValue({ templateId: "managed-template" }),
+    } satisfies E2BTemplateSdk;
+    const provider = new E2BSandboxProvider("test-key", sdk, templates);
+    const request = {
+      botId: "bot-1",
+      homePath: "/unused",
+      providerKind: "e2b" as const,
+      template: "desktop",
+      cpuCount: 8,
+      memoryMB: 16_384,
+    };
+
+    await provider.provision(request, context);
+    await provider.provision({ ...request, botId: "bot-2" }, context);
+
+    expect(templates.exists).toHaveBeenCalledTimes(1);
+    expect(templates.build).toHaveBeenCalledWith(
+      "desktop",
+      expect.stringMatching(/^rakazo-computer-[a-f0-9]{20}$/),
+      { apiKey: "test-key", cpuCount: 8, memoryMB: 16_384 },
+    );
+    const managedName = templates.build.mock.calls[0]?.[1];
+    expect(sdk.create).toHaveBeenNthCalledWith(
+      1,
+      managedName,
+      expect.objectContaining({ apiKey: "test-key" }),
+    );
+    expect(sdk.create).toHaveBeenNthCalledWith(
+      2,
+      managedName,
+      expect.objectContaining({ apiKey: "test-key" }),
+    );
+  });
+
+  it("uses an existing managed template without rebuilding it", async () => {
+    const sdk = {
+      create: vi.fn().mockResolvedValue({ sandboxId: "profile-sandbox" }),
+    } as unknown as E2BSandboxSdk;
+    const templates = {
+      exists: vi.fn().mockResolvedValue(true),
+      build: vi.fn(),
+    } satisfies E2BTemplateSdk;
+    const provider = new E2BSandboxProvider("test-key", sdk, templates);
+
+    await provider.provision(
+      { botId: "bot-1", homePath: "/unused", cpuCount: 4, memoryMB: 8192 },
+      context,
+    );
+
+    expect(templates.exists).toHaveBeenCalledWith(
+      expect.stringMatching(/^rakazo-computer-[a-f0-9]{20}$/),
+      { apiKey: "test-key" },
+    );
+    expect(templates.build).not.toHaveBeenCalled();
+  });
+
+  it("accepts another worker winning the managed-template build race", async () => {
+    const sdk = {
+      create: vi.fn().mockResolvedValue({ sandboxId: "profile-sandbox" }),
+    } as unknown as E2BSandboxSdk;
+    const templates = {
+      exists: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
+      build: vi.fn().mockRejectedValue(new Error("template already exists")),
+    } satisfies E2BTemplateSdk;
+    const provider = new E2BSandboxProvider("test-key", sdk, templates);
+
+    await expect(
+      provider.provision(
+        { botId: "bot-1", homePath: "/unused", cpuCount: 4, memoryMB: 8192 },
+        context,
+      ),
+    ).resolves.toMatchObject({ providerRef: "profile-sandbox" });
+    expect(templates.exists).toHaveBeenCalledTimes(2);
   });
 
   it("revokes an extra display's control without starting or waiting for its view", async () => {

@@ -156,6 +156,8 @@ app.post("/computers", async (c) => {
       botId: z.string().min(1),
       homePath: z.string().min(1),
       spaceId: z.string().min(1),
+      cpuCount: z.number().int().positive().optional(),
+      memoryMB: z.number().int().min(6).optional(),
     })
     .parse(await c.req.json());
   try {
@@ -184,6 +186,7 @@ app.post("/computers", async (c) => {
       if (existing) {
         const info = await existing.inspect();
         const desired = await docker.getImage(COMPUTER_IMAGE).inspect();
+        const resourceLimits = computerResourceLimits(body);
         const controlPublishOk = controlPortPublicationMatches(
           info.HostConfig.PortBindings,
           controlViaLoopback,
@@ -192,6 +195,8 @@ app.post("/computers", async (c) => {
           info.Image === desired.Id &&
           (!networkMode || info.HostConfig.NetworkMode === networkMode) &&
           info.Config.User === computerUser &&
+          (body.memoryMB === undefined || info.HostConfig.Memory === resourceLimits.Memory) &&
+          (body.cpuCount === undefined || info.HostConfig.NanoCpus === resourceLimits.NanoCpus) &&
           controlPublishOk &&
           (!storage.homeVolume || homeVolumeMatches(info.HostConfig.Mounts, storage.homeVolume))
         ) {
@@ -252,6 +257,8 @@ app.post("/computers", async (c) => {
               networkMode,
               controlToken: randomUUID(),
               publishControlPort: controlViaLoopback,
+              cpuCount: body.cpuCount,
+              memoryMB: body.memoryMB,
             }),
           );
           await container.start();
