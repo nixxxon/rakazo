@@ -18,6 +18,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@rakazo/core";
 import { outgoingCorrelationHeaders } from "@rakazo/logging";
+import { computerSizeResources, type ComputerSize } from "./computer-size.js";
 import {
   boundedComputerActions,
   clampRounded,
@@ -141,9 +142,10 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async provision(
-    request: { botId: string; homePath: string },
+    request: { botId: string; homePath: string; size?: ComputerSize },
     context: AdapterContext,
   ): Promise<ComputerRef> {
+    const resources = request.size ? computerSizeResources(request.size) : undefined;
     const res = await fetch(this.url("/computers"), {
       method: "POST",
       headers: { ...this.headers(context, request.botId), "content-type": "application/json" },
@@ -151,6 +153,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         botId: request.botId,
         homePath: request.homePath,
         spaceId: context.spaceId,
+        cpuCount: resources?.cpuCount,
+        memoryMB: resources?.memoryMB,
       }),
       signal: context.signal,
     });

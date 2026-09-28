@@ -35,6 +35,12 @@ describe("loadEnv", () => {
     expect(env.wakeupDriver).toBe("memory");
   });
 
+  it("exposes CreateOS credentials to computer profile discovery", () => {
+    expect(loadEnv({ ...base, CREATEOS_SANDBOX_API_KEY: "createos-key" }).createosApiKey).toBe(
+      "createos-key",
+    );
+  });
+
   it("loads an optional integrations catalog mirror", () => {
     expect(loadEnv(base).integrationsCatalogUrl).toBeUndefined();
     expect(

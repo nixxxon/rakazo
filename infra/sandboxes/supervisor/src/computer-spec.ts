@@ -120,7 +120,7 @@ function envOrDefault(name: string, fallback: string): string {
 }
 
 /** The host resource ceilings applied to every bot computer. */
-export function computerResourceLimits() {
+export function computerResourceLimits(overrides: { cpuCount?: number; memoryMB?: number } = {}) {
   const memoryBytes = parseMemoryBytes(
     "RAKAZO_COMPUTER_MEMORY",
     envOrDefault("RAKAZO_COMPUTER_MEMORY", DEFAULT_COMPUTER_MEMORY),
@@ -133,14 +133,29 @@ export function computerResourceLimits() {
     "RAKAZO_COMPUTER_PIDS_LIMIT",
     envOrDefault("RAKAZO_COMPUTER_PIDS_LIMIT", DEFAULT_COMPUTER_PIDS_LIMIT),
   );
+  const requestedMemory =
+    overrides.memoryMB === undefined
+      ? undefined
+      : parseMemoryBytes("memoryMB", `${overrides.memoryMB}m`);
+  const requestedCpus =
+    overrides.cpuCount === undefined
+      ? undefined
+      : parseNanoCpus("cpuCount", String(overrides.cpuCount));
+  const effectiveMemory = boundedResource(requestedMemory, memoryBytes);
+  const effectiveCpus = boundedResource(requestedCpus, nanoCpus);
   return {
     // Memory and MemorySwap are set together: leaving MemorySwap unset lets the
     // container swap to twice Memory, so the ceiling would not hold.
-    Memory: memoryBytes,
-    MemorySwap: memoryBytes,
-    NanoCpus: nanoCpus,
+    Memory: effectiveMemory,
+    MemorySwap: effectiveMemory,
+    NanoCpus: effectiveCpus,
     PidsLimit: pidsLimit,
   };
+}
+
+function boundedResource(requested: number | undefined, ceiling: number): number {
+  if (requested === undefined) return ceiling;
+  return ceiling === 0 ? requested : Math.min(requested, ceiling);
 }
 
 export function resolveScreenNetworkMode(value: string | undefined): ScreenNetworkMode {
@@ -225,6 +240,8 @@ export interface ComputerCreateInput {
   controlToken?: string;
   networkMode?: string;
   publishControlPort?: boolean;
+  cpuCount?: number;
+  memoryMB?: number;
 }
 
 interface PointerInput {
@@ -283,7 +300,7 @@ export function containerCreateOptions(input: ComputerCreateInput) {
       ShmSize: 256 * 1024 * 1024,
       CapDrop: ["ALL"],
       SecurityOpt: ["no-new-privileges:true"],
-      ...computerResourceLimits(),
+      ...computerResourceLimits({ cpuCount: input.cpuCount, memoryMB: input.memoryMB }),
       ReadonlyPaths: ["/usr/share/novnc"],
       AutoRemove: false,
       NetworkMode: input.networkMode ?? "bridge",

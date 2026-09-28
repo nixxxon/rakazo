@@ -26,6 +26,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
 import { boxResponseError, wrapBoxCall } from "./box-errors.js";
+import { boatMachineType, type ComputerSize } from "./computer-size.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
   PORTABLE_TRANSFER_BATCH_BYTES,
@@ -142,6 +143,7 @@ export class BoxSandboxProvider implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      size?: ComputerSize;
     },
     context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -162,6 +164,7 @@ export class BoxSandboxProvider implements SandboxProvider {
       botId: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      size?: ComputerSize;
     },
     context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -175,7 +178,11 @@ export class BoxSandboxProvider implements SandboxProvider {
           await this.client.resume(
             {
               boxId: request.providerRef,
-              resumeRequest: { noEnv: true, ttlSeconds: BOX_TTL_SECONDS },
+              resumeRequest: {
+                noEnv: true,
+                ttlSeconds: BOX_TTL_SECONDS,
+                ...(request.size ? { type: boatMachineType(request.size) } : {}),
+              },
             },
             { signal: context.signal },
           );
@@ -190,6 +197,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     const created = await this.client.create(
       {
         createBoxRequest: {
+          ...(request.size ? { type: boatMachineType(request.size) } : {}),
           ttlSeconds: BOX_TTL_SECONDS,
           noEnv: true,
           env: {

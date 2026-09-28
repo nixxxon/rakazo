@@ -82,6 +82,7 @@ function createosFixture(
 ) {
   const statuses = [...(options.statuses ?? ["running"])];
   const calls: string[] = [];
+  const creates: Array<Record<string, unknown>> = [];
   const execs: ExecCall[] = [];
   const events: string[] = [];
   const failConnects = new Set(options.failConnectScreenIds ?? []);
@@ -100,6 +101,7 @@ function createosFixture(
     calls.push(route);
 
     if (route === "POST /v1/sandboxes") {
+      creates.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return jsonResponse({ id: "sbx-1", status: statuses[0] ?? "running" });
     }
     if (method === "GET" && /^\/v1\/sandboxes\/[^/]+$/.test(url.pathname)) {
@@ -181,7 +183,7 @@ function createosFixture(
     return jsonResponse({});
   }) as typeof fetch;
 
-  return { calls, execs, events, fetchImpl };
+  return { calls, creates, execs, events, fetchImpl };
 }
 
 function provider(fixture: ReturnType<typeof createosFixture>) {
@@ -210,6 +212,17 @@ describe("CreateOSSandboxProvider", () => {
 
     expect(ref).toMatchObject({ id: "sbx-1", providerRef: "sbx-1", kind: "createos", fresh: true });
     expect(fixture.calls.filter((call) => call === "GET /v1/sandboxes/sbx-1").length).toBe(2);
+  });
+
+  it("maps a portable size to a CreateOS machine shape", async () => {
+    const fixture = createosFixture();
+
+    await provider(fixture).provision(
+      { botId: "bot-a", homePath: "/unused", size: "medium" },
+      context,
+    );
+
+    expect(fixture.creates).toEqual([expect.objectContaining({ shape: "s-4vcpu-8gb" })]);
   });
 
   it("resumes a paused sandbox and waits for it", async () => {

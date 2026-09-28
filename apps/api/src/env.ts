@@ -44,6 +44,7 @@ export interface AppEnv {
   daytonaTarget: string | undefined;
   boxApiKey: string | undefined;
   boxApiUrl: string | undefined;
+  createosApiKey: string | undefined;
   composioApiKey: string | undefined;
   /** Optional integrations.sh-compatible catalog base URL. */
   integrationsCatalogUrl: string | undefined;
@@ -120,7 +121,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     piSessionRecording: source.PI_SESSION_RECORDING === "true",
     sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
     sandboxSupervisorToken:
-      sandboxProvider === "docker" ? resolveSupervisorToken(source) : undefined,
+      sandboxProvider === "docker"
+        ? resolveSupervisorToken(source)
+        : optional(source.SANDBOX_SUPERVISOR_TOKEN),
     screenProxySecret: resolveScreenProxySecret(source),
     sandboxProvider,
     cloudAgentProvider,
@@ -135,6 +138,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     daytonaTarget: source.DAYTONA_TARGET,
     boxApiKey: source.BOX_API_KEY,
     boxApiUrl: source.BOX_API_URL ?? source.BOX_BASE_URL,
+    createosApiKey: source.CREATEOS_SANDBOX_API_KEY,
     composioApiKey: source.COMPOSIO_API_KEY,
     integrationsCatalogUrl: optional(source.INTEGRATIONS_CATALOG_URL),
     pipedreamClientId: optional(source.PIPEDREAM_CLIENT_ID),

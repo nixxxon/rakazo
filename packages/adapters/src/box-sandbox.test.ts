@@ -82,6 +82,20 @@ describe("BoxSandboxProvider", () => {
     ]);
   });
 
+  it("maps profile sizes to Boat machine types", async () => {
+    const fixture = boxFixture();
+    const provider = new BoxSandboxProvider({ apiKey: "test-key" }, fixture.client);
+
+    await provider.provision({ botId: "bot-a", homePath: "/unused", size: "medium" }, context);
+
+    expect(fixture.create).toHaveBeenCalledWith(
+      {
+        createBoxRequest: expect.objectContaining({ type: "default" }),
+      },
+      { signal: context.signal },
+    );
+  });
+
   it("resumes archived boxes and replaces deleted references", async () => {
     const archived = boxFixture({ state: "archived" });
     const provider = new BoxSandboxProvider({ apiKey: "test-key" }, archived.client);

@@ -182,6 +182,18 @@ describe("DaytonaSandboxProvider", () => {
     expect(fixture.stop).toHaveBeenCalledWith(120);
   });
 
+  it("maps profile sizes to Daytona resources", async () => {
+    const fixture = daytonaFixture();
+    const provider = new DaytonaSandboxProvider({ apiKey: "test-key" }, fixture.client);
+
+    await provider.provision({ botId: "bot-a", homePath: "/unused", size: "large" }, context);
+
+    expect(fixture.create).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { cpu: 8, memory: 16 } }),
+      { timeout: 120 },
+    );
+  });
+
   it("reconnects stopped sandboxes and replaces missing ones", async () => {
     const existing = daytonaFixture({ id: "existing", state: "stopped" });
     const provider = new DaytonaSandboxProvider({ apiKey: "test-key" }, existing.client);
