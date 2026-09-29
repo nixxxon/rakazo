@@ -47,6 +47,7 @@ import {
   codexLiveListsModel,
   computerSupportsUpdate,
   computerUpdateView,
+  configuredSandboxKinds,
   createVoiceProvider,
   defaultCatalogModelId,
   deletePushToken,
@@ -527,6 +528,11 @@ export interface RouterDeps {
     privacyPolicyUrl?: string;
     screenProxySecret: string;
     sandboxProvider: string;
+    sandboxSupervisorToken?: string;
+    e2bApiKey?: string;
+    daytonaApiKey?: string;
+    boxApiKey?: string;
+    createosApiKey?: string;
     gitSha?: string;
     updaterUrl?: string;
     updaterToken?: string;
@@ -1220,6 +1226,7 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
             computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
+            computerProfileId: source.computer?.profileId ?? null,
             modelProvider: source.modelProvider,
             modelId: source.modelId,
             thinkingLevel: source.thinkingLevel,
@@ -1394,9 +1401,39 @@ export function createRouter(deps: RouterDeps) {
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
         const currentMode = bot.computer.scope === "dedicated" ? "dedicated" : "team";
+        const profile =
+          input.mode === "dedicated" && input.profileId
+            ? await deps.prisma.computerProfile.findFirst({
+                where: { id: input.profileId, spaceId: context.actor.spaceId },
+              })
+            : null;
+        if (input.mode === "dedicated" && input.profileId && !profile) {
+          throw new IsolationError();
+        }
+        const desired = {
+          profileId: profile?.id ?? null,
+          kind: profile?.kind ?? (await defaultComputerKind(deps)),
+          size: profile?.size ?? null,
+        };
+        const dedicated = await deps.prisma.computer.findUnique({
+          where: { scopeKey: `bot:${bot.id}` },
+        });
+        if (
+          input.mode === "dedicated" &&
+          dedicated &&
+          (dedicated.profileId !== desired.profileId ||
+            dedicated.kind !== desired.kind ||
+            dedicated.size !== desired.size)
+        ) {
+          await switchComputerProfile(deps, context.actor, dedicated, desired, bot.id);
+        }
         if (currentMode === input.mode) {
           try {
-            return await repos.setBotComputer(context.actor, bot.id, input.mode);
+            return await repos.setBotComputer(context.actor, bot.id, input.mode, {
+              id: desired.profileId,
+              kind: desired.kind,
+              size: desired.size,
+            });
           } catch (error) {
             throw mapSpaceLifecycleError(error);
           }
@@ -1420,12 +1457,14 @@ export function createRouter(deps: RouterDeps) {
           if (bot.computer.controlBotId === bot.id && hasActiveComputerControl(bot.computer)) {
             throw new ORPCError("BAD_REQUEST", { message: "Release the computer first" });
           }
-          if (bot.computer.scope === "dedicated" && bot.computer.providerRef) {
-            const ctx = computerContext(context.actor, bot.id, "computer.switch");
-            const ref = toComputerRef(bot.computer);
-            if (bot.computer.state === "running") {
-              await checkpointAndRecordComputerWorkspace(deps, bot.computer, ref, ctx);
-              await deps.sandbox.stop(ref, ctx);
+          if (bot.computer.scope === "dedicated") {
+            if (bot.computer.providerRef) {
+              const ctx = computerContext(context.actor, bot.id, "computer.switch");
+              const ref = toComputerRef(bot.computer);
+              if (bot.computer.state === "running") {
+                await checkpointAndRecordComputerWorkspace(deps, bot.computer, ref, ctx);
+                await deps.sandbox.stop(ref, ctx);
+              }
             }
             await deps.prisma.computerExecutionLease.deleteMany({
               where: { computerId: bot.computer.id, botId: bot.id },
@@ -1433,6 +1472,9 @@ export function createRouter(deps: RouterDeps) {
             await deps.prisma.computer.update({
               where: { id: bot.computer.id },
               data: {
+                // The inactive computer keeps its provider metadata for a safe later teardown,
+                // but no longer pins a profile that the bot is not using.
+                profileId: null,
                 state: "stopped",
                 controlHolder: "none",
                 controlLeaseId: null,
@@ -1445,7 +1487,11 @@ export function createRouter(deps: RouterDeps) {
               },
             });
           }
-          return await repos.setBotComputer(context.actor, bot.id, input.mode);
+          return await repos.setBotComputer(context.actor, bot.id, input.mode, {
+            id: desired.profileId,
+            kind: desired.kind,
+            size: desired.size,
+          });
         } catch (error) {
           throw mapSpaceLifecycleError(error);
         } finally {
@@ -1554,6 +1600,87 @@ export function createRouter(deps: RouterDeps) {
           path: `/api/v1/bots/${bot.id}/webhook`,
           webhookConfigured: true as const,
         };
+      }),
+    },
+    computerProfiles: {
+      list: authed.computerProfiles.list.handler(async ({ context }) => {
+        const [profiles, teamComputer] = await Promise.all([
+          deps.prisma.computerProfile.findMany({
+            where: { spaceId: context.actor.spaceId },
+            orderBy: [{ name: "asc" }, { createdAt: "asc" }],
+            include: { _count: { select: { computers: true } } },
+          }),
+          deps.prisma.computer.findUnique({
+            where: { scopeKey: `team:${context.actor.spaceId}` },
+            select: { profileId: true },
+          }),
+        ]);
+        return {
+          profiles: profiles.map(computerProfileDto),
+          availableKinds: configuredComputerProfileKinds(deps),
+          teamProfileId: teamComputer?.profileId ?? null,
+        };
+      }),
+      create: authed.computerProfiles.create.handler(async ({ context, input }) => {
+        if (!context.actor.isDeploymentOwner) throw new ORPCError("FORBIDDEN");
+        const available = configuredComputerProfileKinds(deps);
+        if (!available.includes(input.kind)) {
+          throw new ORPCError("BAD_REQUEST", { message: "Computer provider is not configured" });
+        }
+        const profile = await deps.prisma.computerProfile.create({
+          data: {
+            spaceId: context.actor.spaceId,
+            name: input.name,
+            kind: input.kind,
+            size: input.size,
+          },
+          include: { _count: { select: { computers: true } } },
+        });
+        return computerProfileDto(profile);
+      }),
+      remove: authed.computerProfiles.remove.handler(async ({ context, input }) => {
+        if (!context.actor.isDeploymentOwner) throw new ORPCError("FORBIDDEN");
+        const profile = await deps.prisma.computerProfile.findFirst({
+          where: { id: input.profileId, spaceId: context.actor.spaceId },
+          include: { _count: { select: { computers: true } } },
+        });
+        if (!profile) throw new IsolationError();
+        if (profile._count.computers > 0) {
+          throw new ORPCError("CONFLICT", {
+            message: "Move computers to another profile before deleting this profile",
+          });
+        }
+        await deps.prisma.computerProfile.delete({ where: { id: profile.id } });
+        return { ok: true as const };
+      }),
+      setTeam: authed.computerProfiles.setTeam.handler(async ({ context, input }) => {
+        if (!context.actor.isDeploymentOwner) throw new ORPCError("FORBIDDEN");
+        const profile = input.profileId
+          ? await deps.prisma.computerProfile.findFirst({
+              where: { id: input.profileId, spaceId: context.actor.spaceId },
+            })
+          : null;
+        if (input.profileId && !profile) throw new IsolationError();
+        const teamComputer = await deps.prisma.computer.findUnique({
+          where: { scopeKey: `team:${context.actor.spaceId}` },
+          include: { bots: { where: { archivedAt: null }, select: { id: true } } },
+        });
+        if (!teamComputer) return { teamProfileId: null };
+        const desired = {
+          profileId: profile?.id ?? null,
+          kind: profile?.kind ?? (await defaultComputerKind(deps)),
+          size: profile?.size ?? null,
+        };
+        if (
+          teamComputer.profileId !== desired.profileId ||
+          teamComputer.kind !== desired.kind ||
+          teamComputer.size !== desired.size
+        ) {
+          const botId = teamComputer.bots[0]?.id;
+          if (!botId) throw new ORPCError("BAD_REQUEST", { message: "Team computer has no bots" });
+          await switchComputerProfile(deps, context.actor, teamComputer, desired, botId);
+        }
+        return { teamProfileId: desired.profileId };
       }),
     },
     groups: {
@@ -5580,6 +5707,119 @@ async function deploymentDto(prisma: PrismaClient, sandboxProvider: string) {
   };
 }
 
+function computerProfileDto(profile: {
+  id: string;
+  name: string;
+  kind: string;
+  size: string;
+  createdAt: Date;
+  updatedAt: Date;
+  _count: { computers: number };
+}) {
+  return {
+    id: profile.id,
+    name: profile.name,
+    kind: profile.kind as "docker" | "e2b" | "daytona" | "createos" | "box",
+    size: profile.size as "small" | "medium" | "large",
+    computerCount: profile._count.computers,
+    createdAt: profile.createdAt.toISOString(),
+    updatedAt: profile.updatedAt.toISOString(),
+  };
+}
+
+async function switchComputerProfile(
+  deps: RouterDeps,
+  actor: Actor,
+  computer: {
+    id: string;
+    homeKey: string;
+    kind: string;
+    size: string | null;
+    profileId: string | null;
+    providerRef: string | null;
+    state: string;
+    controlHolder: string;
+    controlLeaseId: string | null;
+    controlLeaseExpiresAt: Date | null;
+    updatedAt: Date;
+  },
+  profile: {
+    profileId: string | null;
+    kind: string;
+    size: string | null;
+  },
+  botId: string,
+) {
+  if (computer.state === "booting" || computer.state === "suspending") {
+    throw new ORPCError("CONFLICT", { message: "Computer is busy" });
+  }
+  const activeRun = await deps.prisma.run.findFirst({
+    where: { bot: { computerId: computer.id }, status: { in: [...ACTIVE_RUN_STATUSES] } },
+    select: { id: true },
+  });
+  if (activeRun) throw new ORPCError("BAD_REQUEST", { message: "Stop the bot first" });
+  if (hasActiveComputerControl(computer)) {
+    throw new ORPCError("BAD_REQUEST", { message: "Release the computer first" });
+  }
+
+  const claimStamp = new Date(Math.max(Date.now(), computer.updatedAt.getTime() + 1));
+  const claimed = await deps.prisma.computer.updateMany({
+    where: {
+      id: computer.id,
+      state: computer.state,
+      updatedAt: computer.updatedAt,
+      providerRef: computer.providerRef,
+      profileId: computer.profileId,
+      maintenanceId: null,
+      executionLeases: { none: { expiresAt: { gt: new Date() } } },
+    },
+    data: { state: "suspending", updatedAt: claimStamp },
+  });
+  if (claimed.count !== 1) throw new ORPCError("CONFLICT", { message: "Computer is busy" });
+
+  const context = computerContext(actor, botId, `computer.profile:${randomUUID()}`);
+  const oldRef = computer.providerRef ? toComputerRef(computer) : null;
+  try {
+    if (oldRef && computer.state === "running") {
+      await checkpointAndRecordComputerWorkspace(deps, computer, oldRef, context);
+    }
+    if (oldRef) {
+      await deps.sandbox.releaseScreen?.(oldRef, context).catch(() => undefined);
+      await deps.sandbox.destroy(oldRef, context);
+    }
+    await deps.prisma.computerExecutionLease.deleteMany({
+      where: { computerId: computer.id },
+    });
+    const switched = await deps.prisma.computer.updateMany({
+      where: { id: computer.id, state: "suspending", updatedAt: claimStamp },
+      data: {
+        profileId: profile.profileId,
+        kind: profile.kind,
+        size: profile.size,
+        providerRef: null,
+        state: "stopped",
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+        executionRunId: null,
+        executionBotId: null,
+        executionLeaseExpiresAt: null,
+      },
+    });
+    if (switched.count !== 1) throw new ORPCError("CONFLICT", { message: "Computer changed" });
+  } catch (error) {
+    await deps.prisma.computer
+      .updateMany({
+        where: { id: computer.id, state: "suspending", updatedAt: claimStamp },
+        data: { state: "error" },
+      })
+      .catch(() => undefined);
+    throw error;
+  }
+}
+
 function computerHostFor(
   stored: string | null | undefined,
   sandboxProvider: string,
@@ -5588,6 +5828,24 @@ function computerHostFor(
   if (sandboxProvider !== "docker") return null;
   if (stored === "this-mac" || stored === "docker") return stored;
   return null;
+}
+
+async function defaultComputerKind(deps: RouterDeps) {
+  if (deps.env.sandboxProvider !== "docker") return deps.env.sandboxProvider;
+  const settings = await deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } });
+  return computerHostFor(settings?.computerHost, deps.env.sandboxProvider) === "this-mac"
+    ? "desktop"
+    : deps.env.sandboxProvider;
+}
+
+function configuredComputerProfileKinds(deps: RouterDeps) {
+  return configuredSandboxKinds(deps.env.sandboxProvider, {
+    supervisorToken: deps.env.sandboxSupervisorToken,
+    e2bApiKey: deps.env.e2bApiKey,
+    daytonaApiKey: deps.env.daytonaApiKey,
+    createosApiKey: deps.env.createosApiKey,
+    boxApiKey: deps.env.boxApiKey,
+  });
 }
 
 async function persistModelCredential(

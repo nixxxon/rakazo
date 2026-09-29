@@ -16,6 +16,35 @@ Published-images [Compose](../infra/compose/docker-compose.images.yml) defaults 
 It always starts the supervisor and requires `SANDBOX_SUPERVISOR_TOKEN`, including for `none`
 and remote providers. This stack credential does not replace a remote provider's API key.
 
+## Computer profiles
+
+Deployment owners can create Space-scoped profiles under **Settings → Computer** and assign one
+to the shared Team computer or to a Private computer. A profile selects a configured provider and
+one portable size. `SANDBOX_PROVIDER` remains the default for computers without a profile; adding
+the other provider credentials makes those providers available to profiles.
+
+| Profile size | Docker / E2B / Daytona | Boat type | CreateOS shape |
+| --- | --- | --- | --- |
+| Small | 2 vCPU / 4 GB | `small` | `s-2vcpu-2gb` |
+| Medium | 4 vCPU / 8 GB | `default` | `s-4vcpu-8gb` |
+| Large | 8 vCPU / 16 GB | `large` | `s-8vcpu-16gb` |
+
+Adapters translate these sizes into provider-native settings. E2B applies them by building and
+reusing a managed template derived from `desktop`; the first computer using a size can therefore
+take longer to start. Managed templates are intentionally retained when a Rakazo profile is deleted
+because another profile or deployment using the same E2B project may still reuse them. Daytona
+receives the matching CPU and memory request, Boat receives its native machine type, and CreateOS
+receives its native machine shape. Provider plans may restrict which sizes are available.
+
+Docker profiles apply the mapped CPU and memory as per-container runtime limits. Deployment-wide
+`RAKAZO_COMPUTER_CPUS` and `RAKAZO_COMPUTER_MEMORY` limits remain safety ceilings, so a profile can
+request a smaller container but cannot raise it above the operator's configured maximum.
+
+Provider and size choices are immutable. Create a new profile and switch the computer
+when its bot is stopped and no user has control. Rakazo checkpoints the persistent home, destroys the
+old sandbox, and restores the home when the computer next starts. A profile cannot be deleted while
+a computer references it.
+
 ## `docker` (in-stack supervisor)
 
 Compose starts a **sandbox supervisor** (from the app image) on the internal

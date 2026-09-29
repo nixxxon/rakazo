@@ -23,6 +23,7 @@ import {
 } from "@rakazo/core/node/desktop-runtime";
 import { sandboxIdleMs } from "./computer-idle.js";
 import { screenSessionKey } from "./computer-screens.js";
+import { type ComputerSize, createOSMachineShape } from "./computer-size.js";
 import {
   boundedComputerActions,
   clampRounded,
@@ -410,6 +411,7 @@ export class CreateOSSandboxProvider implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      size?: ComputerSize;
     },
     context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -436,7 +438,7 @@ export class CreateOSSandboxProvider implements SandboxProvider {
     const created = await this.postJson<CreateOSView>(
       "/v1/sandboxes",
       {
-        shape: this.shape,
+        shape: request.size ? createOSMachineShape(request.size) : this.shape,
         rootfs: this.rootfs,
         ingress_enabled: true,
         auto_pause_after_seconds: Math.max(60, Math.ceil(sandboxIdleMs() / 1_000)),

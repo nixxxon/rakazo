@@ -4,6 +4,7 @@ import type {
   AgentSkillCatalogEntry,
   Bot,
   ComputerMode,
+  ComputerProfile,
   Me,
   ModelCatalogEntry,
   ModelCredential,
@@ -75,6 +76,39 @@ function ComputerModePicker({
   );
 }
 
+function ComputerProfilePicker({
+  id,
+  value,
+  profiles,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  profiles: ComputerProfile[];
+  onChange: (value: string) => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <label htmlFor={id} className={fieldLabelClass}>
+      <Trans>Computer profile</Trans>
+      <NativeSelect
+        id={id}
+        data-testid="bot-computer-profile"
+        className="mt-2 w-full"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <NativeSelectOption value="">{t`Deployment default`}</NativeSelectOption>
+        {profiles.map((profile) => (
+          <NativeSelectOption key={profile.id} value={profile.id}>
+            {profile.name}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+    </label>
+  );
+}
+
 export function CreateBotForm({
   onCreate,
   onCancel,
@@ -84,6 +118,7 @@ export function CreateBotForm({
     title: string;
     description: string;
     computerMode: ComputerMode;
+    computerProfileId: string | null;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -93,8 +128,17 @@ export function CreateBotForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [computerMode, setComputerMode] = useState<ComputerMode>("team");
+  const [computerProfileId, setComputerProfileId] = useState("");
+  const [computerProfiles, setComputerProfiles] = useState<ComputerProfile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void rpc.computerProfiles
+      .list()
+      .then((result) => setComputerProfiles(result.profiles))
+      .catch(() => setComputerProfiles([]));
+  }, []);
 
   async function handleSubmit() {
     if (!name.trim() || submitting) return;
@@ -106,6 +150,7 @@ export function CreateBotForm({
         title: title.trim(),
         description: description.trim(),
         computerMode,
+        computerProfileId: computerMode === "dedicated" ? computerProfileId || null : null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not create bot`);
@@ -175,6 +220,14 @@ export function CreateBotForm({
           privateTestId="create-bot-private"
         />
       </div>
+      {computerMode === "dedicated" ? (
+        <ComputerProfilePicker
+          id={`${ids}-computer-profile`}
+          value={computerProfileId}
+          profiles={computerProfiles}
+          onChange={setComputerProfileId}
+        />
+      ) : null}
       <Button
         className="mt-5"
         disabled={!name.trim() || submitting}
@@ -211,6 +264,7 @@ export function BotSettings({
     modelProvider?: string | null;
     modelId?: string | null;
     thinkingLevel?: ThinkingLevel | null;
+    computerProfileId: string | null;
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
@@ -224,6 +278,8 @@ export function BotSettings({
   const [color, setColor] = useState(bot.color);
   const [notifyOnFinish, setNotifyOnFinish] = useState(bot.notifyOnFinish ?? true);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
+  const [computerProfileId, setComputerProfileId] = useState(bot.computerProfileId ?? "");
+  const [computerProfiles, setComputerProfiles] = useState<ComputerProfile[]>([]);
   const [memoryScope, setMemoryScope] = useState(bot.memoryScope);
   const [autoSpeak, setAutoSpeak] = useState(bot.autoSpeak);
   const [voiceId, setVoiceId] = useState(bot.voiceId ?? "");
@@ -249,6 +305,10 @@ export function BotSettings({
     }) => Promise<void>
   >(async () => undefined);
   useEffect(() => {
+    void rpc.computerProfiles
+      .list()
+      .then((result) => setComputerProfiles(result.profiles))
+      .catch(() => setComputerProfiles([]));
     void rpc.voice
       .voices({})
       .then(setVoices)
@@ -359,6 +419,7 @@ export function BotSettings({
         ...(nextColor !== bot.color ? { color: nextColor } : {}),
         notifyOnFinish: nextNotify,
         computerMode,
+        computerProfileId: computerMode === "dedicated" ? computerProfileId || null : null,
         memoryScope,
         autoSpeak,
         voiceId: voiceId || null,
@@ -484,6 +545,14 @@ export function BotSettings({
           </span>
         </summary>
         <ComputerModePicker value={computerMode} onChange={setComputerMode} />
+        {computerMode === "dedicated" ? (
+          <ComputerProfilePicker
+            id={`${ids}-computer-profile`}
+            value={computerProfileId}
+            profiles={computerProfiles}
+            onChange={setComputerProfileId}
+          />
+        ) : null}
         <Suspense fallback={null}>
           <ScratchpadSection botId={bot.id} />
           {advancedOpened ? (

@@ -24,6 +24,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
 import { screenSessionKey } from "./computer-screens.js";
+import { computerSizeResources, type ComputerSize } from "./computer-size.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
   PORTABLE_TRANSFER_BATCH_BYTES,
@@ -33,7 +34,18 @@ import { LinuxDesktop, PREPARE_LINUX_DESKTOP } from "./linux-desktop.js";
 
 const DAYTONA_SCREEN_TTL_SECONDS = 3_600;
 
-export type DaytonaSandboxSdk = Pick<Daytona, "create" | "get">;
+export type DaytonaSandboxSdk = Pick<Daytona, "get"> & {
+  create(
+    params: {
+      labels: Record<string, string>;
+      envVars: Record<string, string>;
+      autoStopInterval: number;
+      autoDeleteInterval: number;
+      resources?: { cpu: number; memory: number };
+    },
+    options?: { timeout?: number },
+  ): Promise<Sandbox>;
+};
 
 export class DaytonaSandboxProvider implements SandboxProvider {
   private readonly client: DaytonaSandboxSdk;
@@ -123,6 +135,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
+      size?: ComputerSize;
     },
     _context: AdapterContext,
   ): Promise<ComputerRef> {
@@ -136,6 +149,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       }
     }
 
+    const resources = request.size ? computerSizeResources(request.size) : undefined;
     const sandbox = await this.client.create(
       {
         ...(this.snapshotName ? { snapshot: this.snapshotName } : {}),
@@ -143,6 +157,9 @@ export class DaytonaSandboxProvider implements SandboxProvider {
         envVars: { VNC_RESOLUTION: "1280x800" },
         autoStopInterval: 0,
         autoDeleteInterval: -1,
+        ...(resources
+          ? { resources: { cpu: resources.cpuCount, memory: resources.memoryMB / 1_024 } }
+          : {}),
       },
       { timeout: 120 },
     );

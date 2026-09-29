@@ -48,7 +48,7 @@ function mapBot(
     createdAt: Date;
     updatedAt: Date;
     thread: { id: string; unread: boolean } | null;
-    computer: { scope: string } | null;
+    computer: { scope: string; profileId: string | null } | null;
     voiceId?: string | null;
     autoSpeak?: boolean;
     modelProvider?: string | null;
@@ -84,6 +84,7 @@ function mapBot(
     preview,
     status,
     computerMode: bot.computer ? parseComputerMode(bot.computer.scope) : "team",
+    computerProfileId: bot.computer?.profileId ?? null,
     createdAt: bot.createdAt.toISOString(),
     updatedAt: bot.updatedAt.toISOString(),
     voiceId: bot.voiceId ?? null,
@@ -295,7 +296,7 @@ export function createRepos(prisma: PrismaClient) {
             },
           },
           runs: activeRunSelection,
-          computer: { select: { scope: true } },
+          computer: { select: { scope: true, profileId: true } },
         },
         orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
       });
@@ -384,6 +385,7 @@ export function createRepos(prisma: PrismaClient) {
         color?: string;
         parentBotId?: string | null;
         computerMode?: ComputerMode;
+        computerProfileId?: string | null;
         spawnKey?: string;
         modelProvider?: string | null;
         modelId?: string | null;
@@ -473,12 +475,20 @@ export function createRepos(prisma: PrismaClient) {
             });
           }
           if (input.computerMode === "dedicated") {
+            const profile = input.computerProfileId
+              ? await tx.computerProfile.findFirst({
+                  where: { id: input.computerProfileId, spaceId: actor.spaceId },
+                })
+              : null;
+            if (input.computerProfileId && !profile) throw new IsolationError();
             const dedicated = await ensureComputerRecord(tx, {
               mode: "dedicated",
               spaceId: actor.spaceId,
               userId: actor.userId,
               botId: created.id,
-              kind,
+              kind: profile?.kind ?? kind,
+              profileId: profile?.id ?? null,
+              size: profile?.size ?? null,
             });
             await tx.bot.update({ where: { id: created.id }, data: { computerId: dedicated.id } });
           }
@@ -568,13 +578,33 @@ export function createRepos(prisma: PrismaClient) {
       });
     },
 
-    async setBotComputer(actor: Actor, botId: string, mode: ComputerMode): Promise<Bot> {
+    async setBotComputer(
+      actor: Actor,
+      botId: string,
+      mode: ComputerMode,
+      profile?: {
+        id: string | null;
+        kind: string;
+        size: string | null;
+      },
+    ): Promise<Bot> {
       const bot = await prisma.bot.findFirst({
         where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
         include: { computer: true },
       });
       if (!bot?.computer) throw new IsolationError();
-      const kind = bot.computer.kind;
+      if (mode === "dedicated" && profile?.id) {
+        const owned = await prisma.computerProfile.findFirst({
+          where: { id: profile.id, spaceId: actor.spaceId },
+          select: { id: true },
+        });
+        if (!owned) throw new IsolationError();
+      }
+      const desired = profile ?? {
+        id: null,
+        kind: bot.computer.kind,
+        size: null,
+      };
       // Keep ensure + bot link in one transaction so a capped quota lock covers
       // both steps (a computer row alone does not count until a live bot refs it).
       const updated = await withTransactionRetry(() =>
@@ -584,8 +614,27 @@ export function createRepos(prisma: PrismaClient) {
             spaceId: actor.spaceId,
             userId: actor.userId,
             botId,
-            kind,
+            kind: desired.kind,
+            profileId: desired.id,
+            size: desired.size,
           });
+          if (
+            mode === "dedicated" &&
+            (computer.profileId !== desired.id ||
+              computer.kind !== desired.kind ||
+              computer.size !== desired.size)
+          ) {
+            const reconfigured = await tx.computer.updateMany({
+              where: { id: computer.id, providerRef: null, state: "stopped" },
+              data: {
+                profileId: desired.id,
+                kind: desired.kind,
+                size: desired.size,
+              },
+            });
+            if (reconfigured.count !== 1)
+              throw new Error("Computer must be stopped before switching profile");
+          }
           return tx.bot.update({
             where: { id: botId },
             data: { computerId: computer.id },

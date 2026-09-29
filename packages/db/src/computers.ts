@@ -171,6 +171,8 @@ function upsertComputerRecord(
     userId: string;
     botId?: string;
     kind: string;
+    profileId?: string | null;
+    size?: string | null;
   },
   scopeKey: string,
 ) {
@@ -183,6 +185,8 @@ function upsertComputerRecord(
       scopeKey,
       homeKey: computerHomeKey(input.mode, input.spaceId, input.botId),
       kind: input.kind,
+      profileId: input.profileId ?? null,
+      size: input.size ?? null,
     },
     update: {},
   });
@@ -196,6 +200,8 @@ async function ensureComputerRecordWithQuota(
     userId: string;
     botId?: string;
     kind: string;
+    profileId?: string | null;
+    size?: string | null;
   },
   limit: number,
   scopeKey: string,
@@ -237,6 +243,8 @@ export async function ensureComputerRecord(
     userId: string;
     botId?: string;
     kind: string;
+    profileId?: string | null;
+    size?: string | null;
   },
 ) {
   const limit = resolveMaxComputersPerUser();

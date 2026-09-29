@@ -46,6 +46,10 @@ const BOOT_WAIT_MS = 250;
  */
 const BOOT_CLAIM_STALE_MS = EXECUTION_LEASE_MS;
 
+function parseComputerSize(size: string | null): "small" | "medium" | "large" | undefined {
+  return size === "small" || size === "medium" || size === "large" ? size : undefined;
+}
+
 /**
  * Booting and suspending claims newer than an execution-lease TTL are live.
  * Older ones are abandoned: the worker died mid-transition, and Reset or a later
@@ -289,6 +293,7 @@ export async function provisionComputer(
         homePath,
         providerRef: existing.providerRef ?? undefined,
         providerKind: existing.kind as ComputerRef["kind"],
+        size: parseComputerSize(existing.size),
       },
       context,
     );
